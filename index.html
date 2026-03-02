@@ -6,9 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Thynk Unlimited - AR Member Card</title>
     
-    <!-- Load A-Frame first -->
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <!-- Then load MindAR -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     
     <style>
@@ -78,11 +76,6 @@
         
         #start-button:hover {
             transform: translate(-50%, -50%) scale(1.05);
-            box-shadow: 0 15px 40px rgba(218, 165, 32, 0.5);
-        }
-        
-        #start-button:active {
-            transform: translate(-50%, -50%) scale(0.95);
         }
         
         #start-button.hidden {
@@ -123,24 +116,15 @@
     </style>
 </head>
 <body>
-    <!-- Loading Screen -->
     <div id="loading-screen">
         <div class="loader"></div>
         <div id="loading-text">Loading AR Experience...</div>
     </div>
     
-    <!-- Start Button -->
     <button id="start-button">🎬 Start AR Experience</button>
-    
-    <!-- Status Indicator -->
     <div id="status">Ready</div>
+    <div id="instructions">📱 Point your camera at the member card</div>
     
-    <!-- AR Instructions -->
-    <div id="instructions">
-        📱 Point your camera at the member card
-    </div>
-    
-    <!-- A-Frame Scene with MindAR -->
     <a-scene
         mindar-image="imageTargetSrc: ./assets/targets/targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;"
         color-space="sRGB"
@@ -149,7 +133,6 @@
         device-orientation-permission-ui="enabled: false"
         embedded>
         
-        <!-- Asset Management -->
         <a-assets>
             <video
                 id="club-video"
@@ -163,20 +146,17 @@
             </video>
         </a-assets>
         
-        <!-- AR Camera -->
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         
-        <!-- Image Target Entity -->
         <a-entity mindar-image-target="targetIndex: 0" id="target">
-            <!-- Video Plane attached to the card - Using video element directly -->
-            <a-video
+            <a-plane
                 id="video-plane"
-                src="#club-video"
-                position="0 0 0.1"
+                position="0 0 0"
                 height="0.552"
                 width="1"
-                rotation="0 0 0">
-            </a-video>
+                rotation="0 0 0"
+                material="shader: flat; side: double">
+            </a-plane>
         </a-entity>
     </a-scene>
     
@@ -186,36 +166,49 @@
             const video = document.querySelector('#club-video');
             const videoPlane = document.querySelector('#video-plane');
             const target = document.querySelector('#target');
-            const instructions = document.querySelector('#instructions');
             const loadingScreen = document.querySelector('#loading-screen');
             const startButton = document.querySelector('#start-button');
             const status = document.querySelector('#status');
             
             let arStarted = false;
-            let isTracking = false;
+            let videoTexture = null;
             
-            // Hide loading screen when scene loads
             sceneEl.addEventListener('loaded', function() {
                 console.log('Scene loaded');
                 loadingScreen.classList.add('hidden');
+                
+                // Create VideoTexture using Three.js directly
+                sceneEl.addEventListener('renderstart', function() {
+                    if (!videoTexture) {
+                        videoTexture = new THREE.VideoTexture(video);
+                        videoTexture.minFilter = THREE.LinearFilter;
+                        videoTexture.magFilter = THREE.LinearFilter;
+                        videoTexture.format = THREE.RGBAFormat;
+                        
+                        // Apply texture to plane material
+                        const mesh = videoPlane.getObject3D('mesh');
+                        if (mesh) {
+                            mesh.material.map = videoTexture;
+                            mesh.material.needsUpdate = true;
+                            console.log('VideoTexture created and applied');
+                        }
+                    }
+                }, {once: true});
             });
             
-            // Start AR button click handler
             startButton.addEventListener('click', async function() {
                 console.log('Start button clicked');
                 
                 try {
-                    // Prime the video
                     video.muted = true;
                     await video.play();
-                    console.log('Video primed successfully');
+                    console.log('Video primed');
                     video.pause();
                     video.currentTime = 0;
                 } catch (err) {
-                    console.log('Video prime:', err.message);
+                    console.log('Prime:', err.message);
                 }
                 
-                // Start MindAR
                 const mindARSystem = sceneEl.systems['mindar-image-system'];
                 if (mindARSystem) {
                     await mindARSystem.start();
@@ -224,103 +217,37 @@
                 
                 arStarted = true;
                 startButton.classList.add('hidden');
-                status.textContent = '🔍 Searching for card...';
+                status.textContent = '🔍 Searching...';
             });
             
-            // Target tracking events
             if (target) {
                 target.addEventListener('targetFound', async function() {
-                    console.log('Target found!');
-                    isTracking = true;
-                    status.textContent = '✅ Card detected!';
+                    console.log('✅ Target found!');
+                    status.textContent = '▶️ Playing';
                     
-                    // Make video plane visible
-                    if (videoPlane) {
-                        videoPlane.setAttribute('visible', true);
-                        videoPlane.setAttribute('opacity', 1);
-                    }
-                    
-                    if (instructions) {
-                        instructions.style.opacity = '0.3';
-                    }
-                    
-                    // Play video
                     if (video && arStarted) {
                         try {
                             video.currentTime = 0;
-                            video.muted = true;
-                            const playPromise = video.play();
+                            await video.play();
+                            console.log('Video playing');
                             
-                            if (playPromise !== undefined) {
-                                await playPromise;
-                                console.log('Video playing - duration:', video.duration, 'currentTime:', video.currentTime);
-                                status.textContent = '▶️ Playing';
-                                
-                                // Force material update
-                                if (videoPlane) {
-                                    const material = videoPlane.getAttribute('material');
-                                    videoPlane.setAttribute('material', 'src', '#club-video');
-                                    videoPlane.setAttribute('material', 'shader', 'flat');
-                                    console.log('Material updated');
-                                }
+                            // Force texture update
+                            if (videoTexture) {
+                                videoTexture.needsUpdate = true;
                             }
                         } catch (err) {
-                            console.error('Video play error:', err);
-                            status.textContent = '⚠️ ' + err.message;
+                            console.error('Play error:', err);
                         }
                     }
                 });
                 
                 target.addEventListener('targetLost', function() {
-                    console.log('Target lost');
-                    isTracking = false;
+                    console.log('❌ Target lost');
                     status.textContent = '🔍 Searching...';
-                    
-                    // Keep video plane visible but pause
-                    if (videoPlane) {
-                        videoPlane.setAttribute('visible', false);
-                    }
-                    
-                    if (instructions) {
-                        instructions.style.opacity = '1';
-                    }
-                    
                     if (video) {
                         video.pause();
-                        console.log('Video paused');
                     }
                 });
-            }
-            
-            // Fallback: Tap anywhere on screen to play video
-            document.body.addEventListener('click', async function(e) {
-                if (e.target !== startButton && isTracking && video.paused) {
-                    try {
-                        await video.play();
-                        console.log('Video started via tap');
-                    } catch (err) {
-                        console.error('Tap play failed:', err);
-                    }
-                }
-            });
-            
-            // Debug: Log video state every 2 seconds when tracking
-            setInterval(() => {
-                if (isTracking && video) {
-                    console.log('Video state:', {
-                        paused: video.paused,
-                        currentTime: video.currentTime.toFixed(2),
-                        duration: video.duration.toFixed(2),
-                        videoWidth: video.videoWidth,
-                        videoHeight: video.videoHeight,
-                        planeVisible: videoPlane ? videoPlane.getAttribute('visible') : 'N/A'
-                    });
-                }
-            }, 2000);
-            
-            // Additional ready check
-            if (sceneEl.hasLoaded) {
-                loadingScreen.classList.add('hidden');
             }
         });
     </script>
