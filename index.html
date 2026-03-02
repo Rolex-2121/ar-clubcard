@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Thynk Unlimited - AR Member Card</title>
+    
+    <!-- MindAR & A-Frame Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+        
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: #DAA520;
+        }
+        
+        #loading-screen.hidden {
+            display: none;
+        }
+        
+        .loader {
+            border: 4px solid rgba(218, 165, 32, 0.2);
+            border-top: 4px solid #DAA520;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        #loading-text {
+            font-size: 18px;
+            font-weight: 500;
+            margin-top: 10px;
+        }
+        
+        #instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #DAA520;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 500;
+            z-index: 1000;
+            text-align: center;
+            max-width: 80%;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(218, 165, 32, 0.3);
+        }
+        
+        .example-container {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader"></div>
+        <div id="loading-text">Loading AR Experience...</div>
+    </div>
+    
+    <!-- AR Instructions -->
+    <div id="instructions">
+        📱 Point your camera at the member card
+    </div>
+    
+    <!-- A-Frame Scene with MindAR -->
+    <a-scene
+        mindar-image="imageTargetSrc: ./assets/targets/targets.mind; 
+                      filterMinCF:0.0001; 
+                      filterBeta: 0.01;
+                      warmupTolerance: 5;
+                      missTolerance: 5;"
+        color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false">
+        
+        <!-- Asset Management -->
+        <a-assets>
+            <video
+                id="club-video"
+                src="./assets/videos/intro-mobile.mp4"
+                preload="auto"
+                playsinline
+                webkit-playsinline
+                muted
+                loop
+                crossorigin="anonymous">
+            </video>
+        </a-assets>
+        
+        <!-- AR Camera -->
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        
+        <!-- Image Target Entity -->
+        <a-entity mindar-image-target="targetIndex: 0">
+            <!-- Video Plane attached to the card -->
+            <a-plane
+                src="#club-video"
+                position="0 0 0"
+                height="0.552"
+                width="1"
+                rotation="0 0 0"
+                material="shader: flat; transparent: true; opacity: 1"
+                play-on-detected>
+            </a-plane>
+        </a-entity>
+    </a-scene>
+    
+    <script>
+        // Hide loading screen once AR is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            const sceneEl = document.querySelector('a-scene');
+            
+            sceneEl.addEventListener('loaded', function() {
+                setTimeout(() => {
+                    document.getElementById('loading-screen').classList.add('hidden');
+                }, 1000);
+            });
+        });
+        
+        // Custom component to play video when target is detected
+        AFRAME.registerComponent('play-on-detected', {
+            init: function() {
+                const video = document.querySelector('#club-video');
+                const instructions = document.querySelector('#instructions');
+                
+                this.el.addEventListener('targetFound', event => {
+                    console.log('Target found - playing video');
+                    video.play();
+                    if (instructions) {
+                        instructions.style.opacity = '0.3';
+                    }
+                });
+                
+                this.el.addEventListener('targetLost', event => {
+                    console.log('Target lost - pausing video');
+                    video.pause();
+                    if (instructions) {
+                        instructions.style.opacity = '1';
+                    }
+                });
+            }
+        });
+        
+        // Error handling
+        window.addEventListener('error', function(e) {
+            console.error('Error:', e.message);
+        });
+    </script>
+</body>
+</html>
