@@ -6,9 +6,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Thynk Unlimited - AR Member Card</title>
     
-    <!-- MindAR & A-Frame Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <!-- Load A-Frame first -->
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <!-- Then load MindAR -->
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     
     <style>
         body {
@@ -74,10 +75,6 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(218, 165, 32, 0.3);
         }
-        
-        .example-container {
-            display: none;
-        }
     </style>
 </head>
 <body>
@@ -94,15 +91,12 @@
     
     <!-- A-Frame Scene with MindAR -->
     <a-scene
-        mindar-image="imageTargetSrc: ./assets/targets/targets.mind; 
-                      filterMinCF:0.0001; 
-                      filterBeta: 0.01;
-                      warmupTolerance: 5;
-                      missTolerance: 5;"
+        mindar-image="imageTargetSrc: ./assets/targets/targets.mind; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;"
         color-space="sRGB"
         renderer="colorManagement: true, physicallyCorrectLights"
         vr-mode-ui="enabled: false"
-        device-orientation-permission-ui="enabled: false">
+        device-orientation-permission-ui="enabled: false"
+        embedded>
         
         <!-- Asset Management -->
         <a-assets>
@@ -122,59 +116,64 @@
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         
         <!-- Image Target Entity -->
-        <a-entity mindar-image-target="targetIndex: 0">
+        <a-entity mindar-image-target="targetIndex: 0" id="target">
             <!-- Video Plane attached to the card -->
             <a-plane
+                id="video-plane"
                 src="#club-video"
                 position="0 0 0"
                 height="0.552"
                 width="1"
                 rotation="0 0 0"
-                material="shader: flat; transparent: true; opacity: 1"
-                play-on-detected>
+                material="shader: flat">
             </a-plane>
         </a-entity>
     </a-scene>
     
     <script>
-        // Hide loading screen once AR is ready
+        // Simple approach: Direct DOM manipulation, no custom components
         document.addEventListener('DOMContentLoaded', function() {
             const sceneEl = document.querySelector('a-scene');
+            const video = document.querySelector('#club-video');
+            const target = document.querySelector('#target');
+            const instructions = document.querySelector('#instructions');
+            const loadingScreen = document.querySelector('#loading-screen');
             
+            // Hide loading screen when scene is ready
             sceneEl.addEventListener('loaded', function() {
+                console.log('Scene loaded');
                 setTimeout(() => {
-                    document.getElementById('loading-screen').classList.add('hidden');
+                    loadingScreen.classList.add('hidden');
                 }, 1000);
             });
-        });
-        
-        // Custom component to play video when target is detected
-        AFRAME.registerComponent('play-on-detected', {
-            init: function() {
-                const video = document.querySelector('#club-video');
-                const instructions = document.querySelector('#instructions');
-                
-                this.el.addEventListener('targetFound', event => {
-                    console.log('Target found - playing video');
-                    video.play();
+            
+            // Video playback control via target events
+            if (target) {
+                target.addEventListener('targetFound', function() {
+                    console.log('Target found!');
+                    if (video) {
+                        video.play().catch(err => console.log('Play error:', err));
+                    }
                     if (instructions) {
                         instructions.style.opacity = '0.3';
                     }
                 });
                 
-                this.el.addEventListener('targetLost', event => {
-                    console.log('Target lost - pausing video');
-                    video.pause();
+                target.addEventListener('targetLost', function() {
+                    console.log('Target lost');
+                    if (video) {
+                        video.pause();
+                    }
                     if (instructions) {
                         instructions.style.opacity = '1';
                     }
                 });
             }
-        });
-        
-        // Error handling
-        window.addEventListener('error', function(e) {
-            console.error('Error:', e.message);
+            
+            // Additional ready check
+            if (sceneEl.hasLoaded) {
+                loadingScreen.classList.add('hidden');
+            }
         });
     </script>
 </body>
