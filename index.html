@@ -58,6 +58,37 @@
             margin-top: 10px;
         }
         
+        #start-button {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #DAA520 0%, #B8860B 100%);
+            color: #1a1a1a;
+            padding: 20px 40px;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            z-index: 10000;
+            box-shadow: 0 10px 30px rgba(218, 165, 32, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        #start-button:hover {
+            transform: translate(-50%, -50%) scale(1.05);
+            box-shadow: 0 15px 40px rgba(218, 165, 32, 0.5);
+        }
+        
+        #start-button:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+        
+        #start-button.hidden {
+            display: none;
+        }
+        
         #instructions {
             position: fixed;
             bottom: 20px;
@@ -75,6 +106,20 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(218, 165, 32, 0.3);
         }
+        
+        #status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #DAA520;
+            padding: 10px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(218, 165, 32, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -84,6 +129,12 @@
         <div id="loading-text">Loading AR Experience...</div>
     </div>
     
+    <!-- Start Button -->
+    <button id="start-button">🎬 Start AR Experience</button>
+    
+    <!-- Status Indicator -->
+    <div id="status">Ready</div>
+    
     <!-- AR Instructions -->
     <div id="instructions">
         📱 Point your camera at the member card
@@ -91,7 +142,7 @@
     
     <!-- A-Frame Scene with MindAR -->
     <a-scene
-        mindar-image="imageTargetSrc: ./assets/targets/targets.mind; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;"
+        mindar-image="imageTargetSrc: ./assets/targets/targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;"
         color-space="sRGB"
         renderer="colorManagement: true, physicallyCorrectLights"
         vr-mode-ui="enabled: false"
@@ -131,44 +182,102 @@
     </a-scene>
     
     <script>
-        // Simple approach: Direct DOM manipulation, no custom components
         document.addEventListener('DOMContentLoaded', function() {
             const sceneEl = document.querySelector('a-scene');
             const video = document.querySelector('#club-video');
             const target = document.querySelector('#target');
             const instructions = document.querySelector('#instructions');
             const loadingScreen = document.querySelector('#loading-screen');
+            const startButton = document.querySelector('#start-button');
+            const status = document.querySelector('#status');
             
-            // Hide loading screen when scene is ready
+            let arStarted = false;
+            let isTracking = false;
+            
+            // Hide loading screen when scene loads
             sceneEl.addEventListener('loaded', function() {
                 console.log('Scene loaded');
-                setTimeout(() => {
-                    loadingScreen.classList.add('hidden');
-                }, 1000);
+                loadingScreen.classList.add('hidden');
             });
             
-            // Video playback control via target events
+            // Start AR button click handler
+            startButton.addEventListener('click', async function() {
+                console.log('Start button clicked');
+                
+                try {
+                    // Try to play video once to unlock autoplay
+                    await video.play();
+                    console.log('Video primed successfully');
+                    video.pause();
+                    video.currentTime = 0;
+                } catch (err) {
+                    console.log('Video prime warning (expected):', err);
+                }
+                
+                // Start MindAR
+                const mindARSystem = sceneEl.systems['mindar-image-system'];
+                if (mindARSystem) {
+                    await mindARSystem.start();
+                    console.log('MindAR started');
+                }
+                
+                arStarted = true;
+                startButton.classList.add('hidden');
+                status.textContent = '🔍 Searching for card...';
+            });
+            
+            // Target tracking events
             if (target) {
-                target.addEventListener('targetFound', function() {
+                target.addEventListener('targetFound', async function() {
                     console.log('Target found!');
-                    if (video) {
-                        video.play().catch(err => console.log('Play error:', err));
-                    }
+                    isTracking = true;
+                    status.textContent = '✅ Card detected!';
+                    
                     if (instructions) {
                         instructions.style.opacity = '0.3';
+                    }
+                    
+                    // Play video with error handling
+                    if (video && arStarted) {
+                        try {
+                            video.currentTime = 0;
+                            await video.play();
+                            console.log('Video playing');
+                            status.textContent = '▶️ Playing';
+                        } catch (err) {
+                            console.error('Video play error:', err);
+                            status.textContent = '⚠️ Tap screen to play';
+                        }
                     }
                 });
                 
                 target.addEventListener('targetLost', function() {
                     console.log('Target lost');
-                    if (video) {
-                        video.pause();
-                    }
+                    isTracking = false;
+                    status.textContent = '🔍 Searching...';
+                    
                     if (instructions) {
                         instructions.style.opacity = '1';
                     }
+                    
+                    if (video) {
+                        video.pause();
+                        console.log('Video paused');
+                    }
                 });
             }
+            
+            // Fallback: Tap anywhere on screen to play video
+            document.body.addEventListener('click', async function(e) {
+                if (e.target !== startButton && isTracking && video.paused) {
+                    try {
+                        await video.play();
+                        console.log('Video started via tap');
+                    } catch (err) {
+                        console.error('Tap play failed:', err);
+                    }
+                }
+            });
             
             // Additional ready check
             if (sceneEl.hasLoaded) {
