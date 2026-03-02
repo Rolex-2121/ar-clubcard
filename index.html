@@ -168,16 +168,15 @@
         
         <!-- Image Target Entity -->
         <a-entity mindar-image-target="targetIndex: 0" id="target">
-            <!-- Video Plane attached to the card -->
-            <a-plane
+            <!-- Video Plane attached to the card - Using video element directly -->
+            <a-video
                 id="video-plane"
                 src="#club-video"
-                position="0 0 0"
+                position="0 0 0.1"
                 height="0.552"
                 width="1"
-                rotation="0 0 0"
-                material="shader: flat">
-            </a-plane>
+                rotation="0 0 0">
+            </a-video>
         </a-entity>
     </a-scene>
     
@@ -185,6 +184,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             const sceneEl = document.querySelector('a-scene');
             const video = document.querySelector('#club-video');
+            const videoPlane = document.querySelector('#video-plane');
             const target = document.querySelector('#target');
             const instructions = document.querySelector('#instructions');
             const loadingScreen = document.querySelector('#loading-screen');
@@ -205,13 +205,14 @@
                 console.log('Start button clicked');
                 
                 try {
-                    // Try to play video once to unlock autoplay
+                    // Prime the video
+                    video.muted = true;
                     await video.play();
                     console.log('Video primed successfully');
                     video.pause();
                     video.currentTime = 0;
                 } catch (err) {
-                    console.log('Video prime warning (expected):', err);
+                    console.log('Video prime:', err.message);
                 }
                 
                 // Start MindAR
@@ -233,20 +234,39 @@
                     isTracking = true;
                     status.textContent = '✅ Card detected!';
                     
+                    // Make video plane visible
+                    if (videoPlane) {
+                        videoPlane.setAttribute('visible', true);
+                        videoPlane.setAttribute('opacity', 1);
+                    }
+                    
                     if (instructions) {
                         instructions.style.opacity = '0.3';
                     }
                     
-                    // Play video with error handling
+                    // Play video
                     if (video && arStarted) {
                         try {
                             video.currentTime = 0;
-                            await video.play();
-                            console.log('Video playing');
-                            status.textContent = '▶️ Playing';
+                            video.muted = true;
+                            const playPromise = video.play();
+                            
+                            if (playPromise !== undefined) {
+                                await playPromise;
+                                console.log('Video playing - duration:', video.duration, 'currentTime:', video.currentTime);
+                                status.textContent = '▶️ Playing';
+                                
+                                // Force material update
+                                if (videoPlane) {
+                                    const material = videoPlane.getAttribute('material');
+                                    videoPlane.setAttribute('material', 'src', '#club-video');
+                                    videoPlane.setAttribute('material', 'shader', 'flat');
+                                    console.log('Material updated');
+                                }
+                            }
                         } catch (err) {
                             console.error('Video play error:', err);
-                            status.textContent = '⚠️ Tap screen to play';
+                            status.textContent = '⚠️ ' + err.message;
                         }
                     }
                 });
@@ -255,6 +275,11 @@
                     console.log('Target lost');
                     isTracking = false;
                     status.textContent = '🔍 Searching...';
+                    
+                    // Keep video plane visible but pause
+                    if (videoPlane) {
+                        videoPlane.setAttribute('visible', false);
+                    }
                     
                     if (instructions) {
                         instructions.style.opacity = '1';
@@ -278,6 +303,20 @@
                     }
                 }
             });
+            
+            // Debug: Log video state every 2 seconds when tracking
+            setInterval(() => {
+                if (isTracking && video) {
+                    console.log('Video state:', {
+                        paused: video.paused,
+                        currentTime: video.currentTime.toFixed(2),
+                        duration: video.duration.toFixed(2),
+                        videoWidth: video.videoWidth,
+                        videoHeight: video.videoHeight,
+                        planeVisible: videoPlane ? videoPlane.getAttribute('visible') : 'N/A'
+                    });
+                }
+            }, 2000);
             
             // Additional ready check
             if (sceneEl.hasLoaded) {
