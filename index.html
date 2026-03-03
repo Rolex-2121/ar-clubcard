@@ -135,13 +135,13 @@
         <div id="loading-text">Loading AR Experience...</div>
     </div>
     
-    <button id="start-button">🎬 Start AR Experience</button>
-    <div id="status">Ready</div>
-    <div id="instructions">📱 Point your camera at the member card</div>
+    <button id="start-button">👆 Tap to Unlock Magic</button>
+    <div id="status" style="display: none;">Ready</div>
+    <div id="instructions" style="display: none;">📱 Point your camera at the member card</div>
     
     <a-scene
         id="ar-scene"
-        mindar-image="imageTargetSrc: ./assets/targets/targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;"
+        mindar-image="imageTargetSrc: ./assets/targets/targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001;"
         color-space="sRGB"
         renderer="colorManagement: true, physicallyCorrectLights"
         vr-mode-ui="enabled: false"
