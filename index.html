@@ -127,6 +127,35 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(218, 165, 32, 0.3);
         }
+
+        /* Unmute button - shown as fallback if audio is blocked */
+        #unmute-btn {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #DAA520;
+            padding: 12px 22px;
+            border-radius: 25px;
+            font-size: 15px;
+            font-weight: 600;
+            border: 1px solid rgba(218, 165, 32, 0.5);
+            cursor: pointer;
+            z-index: 1001;
+            backdrop-filter: blur(10px);
+            pointer-events: auto;
+            display: none;
+            transition: all 0.3s ease;
+        }
+
+        #unmute-btn:hover {
+            background: rgba(218, 165, 32, 0.2);
+        }
+
+        #unmute-btn.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -138,6 +167,7 @@
     <button id="start-button">👆 Tap to Unlock Magic</button>
     <div id="status" style="display: none;">Ready</div>
     <div id="instructions" style="display: none;">📱 Point your camera at the member card</div>
+    <button id="unmute-btn">🔊 Tap to Enable Sound</button>
     
     <a-scene
         id="ar-scene"
@@ -154,9 +184,10 @@
                 preload="auto"
                 playsinline
                 webkit-playsinline
-                muted
                 loop
                 crossorigin="anonymous">
+                <!-- NOTE: 'muted' removed so audio plays. Browser autoplay policy
+                     requires a user gesture first — handled via the Start button. -->
             </video>
         </a-assets>
         
@@ -188,15 +219,54 @@
             const loadingScreen = document.querySelector('#loading-screen');
             const startButton = document.querySelector('#start-button');
             const status = document.querySelector('#status');
+            const unmuteBtn = document.querySelector('#unmute-btn');
             
             let arStarted = false;
             let videoTexture = null;
-            
+            let audioUnlocked = false;
+
+            // ── Audio unlock helper ──────────────────────────────────────────
+            // Browsers block audio until a user gesture has interacted with
+            // the media element. We attempt to play+pause on the Start button
+            // click (which IS a user gesture), then unmute for real playback.
+            function unlockAudio() {
+                if (audioUnlocked) return Promise.resolve();
+                video.muted = false;
+                video.volume = 1.0;
+                // Brief silent play to satisfy autoplay policy
+                return video.play().then(() => {
+                    video.pause();
+                    video.currentTime = 0;
+                    audioUnlocked = true;
+                    console.log('Audio unlocked ✅');
+                }).catch(err => {
+                    // Audio blocked — keep muted and show unmute button as fallback
+                    console.warn('Audio autoplay blocked:', err.message);
+                    video.muted = true;
+                    unmuteBtn.classList.add('visible');
+                });
+            }
+
+            // Unmute button — acts as a second user-gesture opportunity
+            unmuteBtn.addEventListener('click', function() {
+                video.muted = false;
+                video.volume = 1.0;
+                audioUnlocked = true;
+                // If video is already playing, this is all that's needed
+                if (!video.paused) {
+                    unmuteBtn.classList.remove('visible');
+                } else {
+                    video.play().then(() => {
+                        unmuteBtn.classList.remove('visible');
+                    }).catch(err => console.error('Unmute play failed:', err));
+                }
+            });
+
+            // ── Scene ready ──────────────────────────────────────────────────
             sceneEl.addEventListener('loaded', function() {
                 console.log('Scene loaded');
                 loadingScreen.classList.add('hidden');
 
-                // Video event listeners
                 video.addEventListener('loadeddata', () => {
                     console.log('Video loaded:', {
                         videoWidth: video.videoWidth,
@@ -207,7 +277,6 @@
                 
                 video.load();
 
-                // Create Three.js VideoTexture
                 if (!videoTexture) {
                     videoTexture = new THREE.VideoTexture(video);
                     videoTexture.minFilter = THREE.LinearFilter;
@@ -222,18 +291,12 @@
                 });
             });
             
+            // ── Start button ─────────────────────────────────────────────────
             startButton.addEventListener('click', async function() {
                 console.log('Start button clicked');
-                
-                try {
-                    video.muted = true;
-                    await video.play();
-                    console.log('Video primed');
-                    video.pause();
-                    video.currentTime = 0;
-                } catch (err) {
-                    console.log('Prime error:', err.message);
-                }
+
+                // Unlock audio using this user gesture
+                await unlockAudio();
                 
                 const mindARSystem = sceneEl.systems['mindar-image-system'];
                 if (mindARSystem) {
@@ -243,15 +306,17 @@
                 
                 arStarted = true;
                 startButton.classList.add('hidden');
+                status.style.display = 'block';
+                document.getElementById('instructions').style.display = 'block';
                 status.textContent = '🔍 Searching...';
             });
             
+            // ── Target detected ──────────────────────────────────────────────
             if (target) {
                 target.addEventListener('targetFound', function() {
                     console.log('✅ Target found!');
                     status.textContent = '▶️ Playing';
                     
-                    // Find and configure mesh
                     const searchForMesh = (obj) => {
                         if (obj.type === 'Mesh') return obj;
                         if (obj.children) {
@@ -268,7 +333,6 @@
                     const mesh = searchForMesh(targetObj3D) || planeMesh;
                     
                     if (mesh && mesh.material) {
-                        // Configure material
                         mesh.material.side = THREE.DoubleSide;
                         mesh.material.transparent = true;
                         mesh.material.opacity = 0;
@@ -278,7 +342,6 @@
                         mesh.material.depthTest = false;
                         mesh.scale.set(0.1, 0.1, 0.1);
 
-                        // Animate appearance
                         const startTime = performance.now();
                         const duration = 400;
                         const initialScale = mesh.scale.clone();
@@ -294,7 +357,6 @@
                         };
                         requestAnimationFrame(animate);
 
-                        // Apply video texture after delay
                         setTimeout(() => {
                             if (mesh && mesh.material && videoTexture) {
                                 mesh.material.map = videoTexture;
@@ -305,28 +367,33 @@
                         }, 500);
                     }
                     
-                    // Play video
+                    // Play video WITH audio
                     if (video && arStarted) {
-                        try {
-                            video.currentTime = 0;
-                            video.play().catch(err => console.error('Play failed:', err));
-                            console.log('Video playing');
-                        } catch (err) {
-                            console.error('Play error:', err);
-                        }
+                        video.muted = !audioUnlocked; // muted only if audio wasn't unlocked
+                        video.currentTime = 0;
+                        video.play().then(() => {
+                            console.log('Video playing with audio:', audioUnlocked);
+                            // If audio was blocked, prompt user
+                            if (!audioUnlocked) {
+                                unmuteBtn.classList.add('visible');
+                            }
+                        }).catch(err => {
+                            console.error('Play failed:', err);
+                        });
                     }
                 });
                 
                 target.addEventListener('targetLost', function() {
                     console.log('❌ Target lost');
                     status.textContent = '🔍 Searching...';
+                    unmuteBtn.classList.remove('visible');
                     if (video) {
                         video.pause();
                     }
                 });
             }
 
-            // Update texture every frame
+            // ── Render loop: keep texture fresh ─────────────────────────────
             sceneEl.addEventListener('render', function() {
                 if (videoTexture && video.readyState >= 2) {
                     videoTexture.needsUpdate = true;
