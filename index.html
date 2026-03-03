@@ -74,8 +74,8 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: linear-gradient(135deg, #DAA520 0%, #B8860B 100%);
-            color: #1a1a1a;
+            background: linear-gradient(135deg, #848484 0%, #000000 100%);
+            color: #ffffff;
             padding: 20px 40px;
             border-radius: 50px;
             font-size: 20px;
@@ -90,6 +90,7 @@
         
         #start-button:hover {
             transform: translate(-50%, -50%) scale(1.05);
+            background: linear-gradient(135deg, #000000 0%, #848484 100%);
         }
         
         #start-button.hidden {
@@ -115,6 +116,7 @@
         }
         
         #status {
+            display: none;
             position: fixed;
             top: 20px;
             right: 20px;
@@ -164,7 +166,7 @@
         <div id="loading-text">Loading AR Experience...</div>
     </div>
     
-    <button id="start-button">👆 Tap to Unlock Magic</button>
+    <button id="start-button">Click Me</button>
     <div id="status" style="display: none;">Ready</div>
     <div id="instructions" style="display: none;">📱 Point your camera at the member card</div>
     <button id="unmute-btn">🔊 Tap to Enable Sound</button>
@@ -306,8 +308,8 @@
                 
                 arStarted = true;
                 startButton.classList.add('hidden');
-                status.style.display = 'block';
-                document.getElementById('instructions').style.display = 'block';
+                status.style.display = 'none';
+                document.getElementById('instructions').style.display = 'none';
                 status.textContent = '🔍 Searching...';
             });
             
