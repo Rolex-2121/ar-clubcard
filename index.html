@@ -15,22 +15,25 @@
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
         }
-            /* ensure the A-Frame canvas covers the whole screen */
-            a-scene, #ar-scene, .a-canvas {
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                width: 100% !important;
-                height: 100% !important;
-                pointer-events: none; /* let UI buttons still be clickable */
-            }
-            /* push camera video behind the canvas */
-            video {
-                z-index: -10 !important;
-            }
         
-        /* loading screen container */
+        a-scene, #ar-scene, .a-canvas {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            pointer-events: none;
+        }
+        
+        video {
+            z-index: -10 !important;
+        }
+        
         #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
             height: 100%;
             background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
             display: flex;
@@ -82,6 +85,7 @@
             z-index: 10000;
             box-shadow: 0 10px 30px rgba(218, 165, 32, 0.3);
             transition: all 0.3s ease;
+            pointer-events: auto;
         }
         
         #start-button:hover {
@@ -134,8 +138,6 @@
     <button id="start-button">🎬 Start AR Experience</button>
     <div id="status">Ready</div>
     <div id="instructions">📱 Point your camera at the member card</div>
-    <!-- debug helper: show the raw video in a corner so we can verify content -->
-    <video id="debug-video" controls style="position:fixed;bottom:10px;right:10px;width:120px;z-index:10000;background:#000"></video>
     
     <a-scene
         id="ar-scene"
@@ -159,17 +161,18 @@
         </a-assets>
         
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <!-- debug plane fixed one meter in front of camera -->
-        <a-entity id="debug-static" position="0 0 -1">
-            <a-plane color="red" width="0.5" height="0.3" side="double"></a-plane>
-        </a-entity>
         
         <a-entity mindar-image-target="targetIndex: 0" id="target">
+            <!-- 
+                Card aspect ratio: 849x534 = 1.59:1
+                Video aspect ratio: 1280x720 = 1.78:1
+                Adjusted height to match card better: 0.63 (1/1.59)
+            -->
             <a-plane
                 id="video-plane"
                 position="0 0 0"
-                height="0.552"
                 width="1"
+                height="0.63"
                 rotation="0 0 0"
                 material="shader: flat; side: double">
             </a-plane>
@@ -193,24 +196,18 @@
                 console.log('Scene loaded');
                 loadingScreen.classList.add('hidden');
 
-                // log video loading status/errors so we know what's happening
+                // Video event listeners
                 video.addEventListener('loadeddata', () => {
-                    console.log('Video loadeddata event',{readyState:video.readyState, videoWidth:video.videoWidth, videoHeight:video.videoHeight});
+                    console.log('Video loaded:', {
+                        videoWidth: video.videoWidth,
+                        videoHeight: video.videoHeight,
+                        aspectRatio: (video.videoWidth / video.videoHeight).toFixed(2)
+                    });
                 });
-                video.addEventListener('loadedmetadata', () => console.log('Video loadedmetadata event'));
-                video.addEventListener('error', (e) => console.error('Video error event', e));
-                video.addEventListener('play', () => {
-                    console.log('Video play event',{readyState:video.readyState, currentTime:video.currentTime});
-                    if (video.readyState < 2) {
-                        console.warn('Video readyState low', video.readyState);
-                    }
-                }); 
-                video.addEventListener('pause', () => console.log('Video pause event',{currentTime:video.currentTime}));
-
-                // make sure video element actually begins loading
+                
                 video.load();
 
-                // create a Three.js texture immediately
+                // Create Three.js VideoTexture
                 if (!videoTexture) {
                     videoTexture = new THREE.VideoTexture(video);
                     videoTexture.minFilter = THREE.LinearFilter;
@@ -219,12 +216,10 @@
                     console.log('VideoTexture created');
                 }
 
-                // apply texture using A-Frame's material system (works better with MindAR)
                 videoPlane.setAttribute('material', {
-                    shader: 'flat',  // flat shader for simple video playback without lighting
+                    shader: 'flat',
                     side: 'double'
                 });
-                console.log('Flat material applied via A-Frame setAttribute');
             });
             
             startButton.addEventListener('click', async function() {
@@ -237,7 +232,7 @@
                     video.pause();
                     video.currentTime = 0;
                 } catch (err) {
-                    console.log('Prime:', err.message);
+                    console.log('Prime error:', err.message);
                 }
                 
                 const mindARSystem = sceneEl.systems['mindar-image-system'];
@@ -256,18 +251,9 @@
                     console.log('✅ Target found!');
                     status.textContent = '▶️ Playing';
                     
-                    // DEBUG: inspect what MindAR actually created
-                    console.log('Target entity:', target);
-                    console.log('Target children:', target.children.length);
-                    console.log('VideoPlane:', videoPlane);
-                    
-                    // Try to find ANY mesh in the target entity tree
-                    let foundMesh = null;
+                    // Find and configure mesh
                     const searchForMesh = (obj) => {
-                        if (obj.type === 'Mesh') {
-                            console.log('Found mesh:', obj, {geometry: obj.geometry, material: obj.material});
-                            return obj;
-                        }
+                        if (obj.type === 'Mesh') return obj;
                         if (obj.children) {
                             for (let child of obj.children) {
                                 const result = searchForMesh(child);
@@ -277,43 +263,30 @@
                         return null;
                     };
                     
-                    // Get the Three.js object3D from the target
                     const targetObj3D = target.object3D;
-                    if (targetObj3D) {
-                        foundMesh = searchForMesh(targetObj3D);
-                        console.log('Mesh found in target tree:', !!foundMesh);
-                    }
-                    
-                    // Also check videoPlane
                     const planeMesh = videoPlane.getObject3D('mesh');
-                    console.log('VideoPlane mesh:', planeMesh);
+                    const mesh = searchForMesh(targetObj3D) || planeMesh;
                     
-                    // Apply texture to whichever mesh we found
-                    const mesh = foundMesh || planeMesh;
                     if (mesh && mesh.material) {
-                        // log transform and geometry bounds
-                        console.log('DEBUG mesh transform', mesh.position.clone(), mesh.rotation.clone(), mesh.scale.clone(), mesh.geometry ? mesh.geometry.boundingBox : 'no bounds');
-                        console.log('DEBUG material props', {side: mesh.material.side, opacity: mesh.material.opacity, visible: mesh.material.visible});
-                        // ensure material is double sided and visible
+                        // Configure material
                         mesh.material.side = THREE.DoubleSide;
                         mesh.material.transparent = true;
-                        mesh.material.opacity = 0; // start transparent
+                        mesh.material.opacity = 0;
                         mesh.material.visible = true;
-                        // nudge forward and render on top
                         mesh.position.z += 0.01;
                         mesh.renderOrder = 999;
                         mesh.material.depthTest = false;
-                        // start small for scale animation
-                        mesh.scale.set(0.1,0.1,0.1);
+                        mesh.scale.set(0.1, 0.1, 0.1);
 
-                        // animate scale & opacity to 1 over 400ms
+                        // Animate appearance
                         const startTime = performance.now();
                         const duration = 400;
                         const initialScale = mesh.scale.clone();
+                        
                         const animate = (t) => {
                             const elapsed = t - startTime;
                             const frac = Math.min(1, elapsed / duration);
-                            const s = initialScale.clone().lerp(new THREE.Vector3(1,1,1), frac);
+                            const s = initialScale.clone().lerp(new THREE.Vector3(1, 1, 1), frac);
                             mesh.scale.copy(s);
                             mesh.material.opacity = frac;
                             mesh.material.needsUpdate = true;
@@ -321,34 +294,23 @@
                         };
                         requestAnimationFrame(animate);
 
-                        if (videoTexture) {
-                            // after delay show video
-                            setTimeout(() => {
-                                if (mesh && mesh.material) {
-                                    mesh.material.map = videoTexture;
-                                    mesh.material.color.set(0xffffff);
-                                    mesh.material.needsUpdate = true;
-                                    console.log('TEST: VideoTexture applied');
-                                }
-                            }, 2000);
-                        }
-                    } else {
-                        console.warn('No mesh found!', {mesh: !!mesh, hasGeometry: mesh?.geometry, hasMaterial: mesh?.material});
+                        // Apply video texture after delay
+                        setTimeout(() => {
+                            if (mesh && mesh.material && videoTexture) {
+                                mesh.material.map = videoTexture;
+                                mesh.material.color.set(0xffffff);
+                                mesh.material.needsUpdate = true;
+                                console.log('VideoTexture applied to mesh');
+                            }
+                        }, 500);
                     }
                     
+                    // Play video
                     if (video && arStarted) {
                         try {
                             video.currentTime = 0;
                             video.play().catch(err => console.error('Play failed:', err));
-                            console.log('Video playing',{readyState:video.readyState, videoWidth:video.videoWidth, videoHeight:video.videoHeight});
-
-                            const dbg = document.querySelector('#debug-video');
-                            if (dbg) {
-                                dbg.src = video.src;
-                                dbg.currentTime = video.currentTime;
-                                dbg.muted = true;
-                                dbg.play().catch(()=>{});
-                            }
+                            console.log('Video playing');
                         } catch (err) {
                             console.error('Play error:', err);
                         }
@@ -364,8 +326,7 @@
                 });
             }
 
-            // ensure texture updates every frame
-            let updateCount = 0;
+            // Update texture every frame
             sceneEl.addEventListener('render', function() {
                 if (videoTexture && video.readyState >= 2) {
                     videoTexture.needsUpdate = true;
